@@ -30,11 +30,19 @@ jobs:
           mkdir -p app/android/app/src/main/kotlin/com/signhelper
           cp app/android_template/MainActivity.kt app/android/app/src/main/kotlin/com/signhelper/MainActivity.kt
 
-      - name: Build APK
+      - name: Build APK (arm64 only)
         working-directory: app
-        run: flutter pub get && flutter pub run flutter_launcher_icons || true && flutter build apk --release
+        run: flutter pub get && flutter pub run flutter_launcher_icons || true && flutter build apk --release --target-platform android-arm64
 
       - uses: actions/upload-artifact@v4
         with:
           name: sign-helper-apk
           path: app/build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: 签到助手 v${{ github.run_number }}
+          files: app/build/app/outputs/flutter-apk/app-release.apk
+          body: "签到助手 - GLaDOS 自动签到 (arm64)"
