@@ -13,6 +13,7 @@ class SettingsPage extends StatefulWidget {
 
 class _SettingsPageState extends State<SettingsPage> {
   final _tokenController = TextEditingController();
+  bool _tokenSaved = false;
   bool _scheduleEnabled = false;
   int _scheduleHour = 8;
   int _scheduleMinute = 0;
@@ -31,20 +32,18 @@ class _SettingsPageState extends State<SettingsPage> {
     final minute = await _getInt('schedule_minute', 0);
     final scheduled = await ScheduleService.isScheduled();
 
-    // 检查电池优化状态
     String batteryStatus = '未知';
     bool batteryIgnored = false;
     try {
       const channel = MethodChannel('glados/battery');
       batteryIgnored = await channel.invokeMethod('isIgnoringBatteryOpt') ?? false;
       batteryStatus = batteryIgnored ? '已忽略' : '未忽略';
-    } catch (e) {
-      batteryStatus = '检查失败';
-    }
+    } catch (_) {}
 
     if (mounted) {
       setState(() {
-        _tokenController.text = token;
+        _tokenSaved = token.isNotEmpty;
+        _tokenController.text = _maskToken(token);
         _scheduleEnabled = scheduled;
         _scheduleHour = hour;
         _scheduleMinute = minute;
@@ -52,6 +51,11 @@ class _SettingsPageState extends State<SettingsPage> {
         _batteryStatus = batteryStatus;
       });
     }
+  }
+
+  String _maskToken(String token) {
+    if (token.length <= 8) return token;
+    return '${token.substring(0, 4)}${'*' * (token.length - 8)}${token.substring(token.length - 4)}';
   }
 
   Future<int> _getInt(String key, int def) async {
@@ -66,11 +70,63 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _saveToken() async {
     final token = _tokenController.text.trim();
+    if (token.isEmpty) return;
     await StorageService.setPushToken(token);
     if (mounted) {
+      setState(() {
+        _tokenSaved = true;
+        _tokenController.text = _maskToken(token);
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Token 已保存')),
       );
+    }
+  }
+
+  void _editToken() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('修改 Token'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            hintText: '输入新的 PushPlus Token',
+            border: OutlineInputBorder(),
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              final token = controller.text.trim();
+              if (token.isNotEmpty) {
+                await StorageService.setPushToken(token);
+                if (mounted) {
+                  setState(() {
+                    _tokenSaved = true;
+                    _tokenController.text = _maskToken(token);
+                  });
+                }
+              }
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _clearToken() async {
+    await StorageService.setPushToken('');
+    if (mounted) {
+      setState(() {
+        _tokenSaved = false;
+        _tokenController.text = '';
+      });
     }
   }
 
@@ -113,9 +169,7 @@ class _SettingsPageState extends State<SettingsPage> {
       });
       await _setInt('schedule_hour', picked.hour);
       await _setInt('schedule_minute', picked.minute);
-      if (_scheduleEnabled) {
-        await _toggleSchedule(true);
-      }
+      if (_scheduleEnabled) await _toggleSchedule(true);
     }
   }
 
@@ -123,13 +177,12 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       const channel = MethodChannel('glados/battery');
       await channel.invokeMethod('requestIgnoreBatteryOpt');
-      // 延迟检查状态
       await Future.delayed(const Duration(seconds: 2));
       final ignored = await channel.invokeMethod('isIgnoringBatteryOpt') ?? false;
       if (mounted) {
         setState(() {
           _batteryIgnored = ignored;
-          _batteryStatus = ignored ? '已忽略' : '未忽略（可能已取消）';
+          _batteryStatus = ignored ? '已忽略' : '未忽略';
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(ignored ? '电池优化已忽略 ✅' : '未完成授权')),
@@ -139,6 +192,19 @@ class _SettingsPageState extends State<SettingsPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('请求失败: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _openSystemSettings(String action) async {
+    try {
+      const channel = MethodChannel('glados/battery');
+      await channel.invokeMethod('openSettings', {'action': action});
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('打开设置失败: $e')),
         );
       }
     }
@@ -162,30 +228,53 @@ class _SettingsPageState extends State<SettingsPage> {
                   const SizedBox(height: 8),
                   const Text('签到结果推送到微信', style: TextStyle(fontSize: 13, color: Colors.grey)),
                   const SizedBox(height: 16),
-                  TextField(
-                    controller: _tokenController,
-                    decoration: InputDecoration(
-                      hintText: '请输入 PushPlus Token',
-                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                      filled: true,
+                  if (!_tokenSaved)
+                    Column(
+                      children: [
+                        TextField(
+                          controller: _tokenController,
+                          decoration: InputDecoration(
+                            hintText: '请输入 PushPlus Token',
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                            filled: true,
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          width: double.infinity,
+                          child: FilledButton(onPressed: _saveToken, child: const Text('保存')),
+                        ),
+                      ],
+                    )
+                  else
+                    Column(
+                      children: [
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.key, color: Colors.green),
+                          title: const Text('Token'),
+                          subtitle: Text(
+                            _tokenController.text,
+                            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              IconButton(
+                                icon: const Icon(Icons.edit),
+                                onPressed: _editToken,
+                                tooltip: '修改',
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.delete_outline),
+                                onPressed: _clearToken,
+                                tooltip: '清除',
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton(onPressed: _saveToken, child: const Text('保存')),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton.tonal(
-                        onPressed: () {
-                          _tokenController.clear();
-                          _saveToken();
-                        },
-                        child: const Text('清除'),
-                      ),
-                    ],
-                  ),
                 ],
               ),
             ),
@@ -229,7 +318,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 16),
 
-          // 保后台
+          // 保后台设置
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -255,21 +344,28 @@ class _SettingsPageState extends State<SettingsPage> {
                     ),
                   ),
                   const Divider(),
-                  // 自启动提醒
-                  const ListTile(
+                  // 自启动
+                  ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.power_settings_new, color: Colors.orange),
-                    title: Text('自启动权限'),
-                    subtitle: Text('请在系统设置中手动开启本应用的自启动权限'),
-                    trailing: Icon(Icons.chevron_right),
+                    leading: const Icon(Icons.power_settings_new, color: Colors.orange),
+                    title: const Text('自启动权限'),
+                    subtitle: const Text('请在系统设置中开启自启动'),
+                    trailing: FilledButton.tonal(
+                      onPressed: () => _openSystemSettings('autostart'),
+                      child: const Text('去设置'),
+                    ),
                   ),
-                  const SizedBox(height: 8),
-                  const ListTile(
+                  const Divider(),
+                  // 锁定后台
+                  ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(Icons.lock_open, color: Colors.orange),
-                    title: Text('锁定后台'),
-                    subtitle: Text('建议在最近任务中锁定本应用，防止被清理'),
-                    trailing: Icon(Icons.chevron_right),
+                    leading: const Icon(Icons.lock_open, color: Colors.orange),
+                    title: const Text('锁定后台'),
+                    subtitle: const Text('在最近任务中锁定本应用'),
+                    trailing: FilledButton.tonal(
+                      onPressed: () => _openSystemSettings('recent_apps'),
+                      child: const Text('去设置'),
+                    ),
                   ),
                 ],
               ),
@@ -297,8 +393,6 @@ class _SettingsPageState extends State<SettingsPage> {
                   const Text('5. 在 pushplus.plus 获取 Token 用于微信推送', style: TextStyle(fontSize: 14)),
                   const SizedBox(height: 4),
                   const Text('6. 开启定时签到，设置每天执行时间', style: TextStyle(fontSize: 14)),
-                  const SizedBox(height: 4),
-                  const Text('7. 开启保后台设置，防止系统杀进程', style: TextStyle(fontSize: 14)),
                 ],
               ),
             ),

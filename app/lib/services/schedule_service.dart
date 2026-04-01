@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 import 'storage_service.dart';
 
 class ScheduleService {
+  static final FlutterLocalNotificationsPlugin _notifications = FlutterLocalNotificationsPlugin();
   static Timer? _timer;
   static bool _enabled = false;
   static int _hour = 8;
@@ -11,6 +13,21 @@ class ScheduleService {
   static bool _checkedToday = false;
 
   static Future<void> init() async {
+    // 初始化通知（仅用于 show，不用 zonedSchedule）
+    const android = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const settings = InitializationSettings(android: android);
+    await _notifications.initialize(settings);
+
+    const channel = AndroidNotificationChannel(
+      'glados_checkin',
+      '签到助手',
+      description: '签到结果通知',
+      importance: Importance.defaultImportance,
+    );
+    await _notifications
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
+
     final prefs = await SharedPreferences.getInstance();
     _enabled = prefs.getBool('schedule_enabled') ?? false;
     _hour = prefs.getInt('schedule_hour') ?? 8;
@@ -52,16 +69,37 @@ class ScheduleService {
       _checkedToday = true;
       await runCheckin();
     }
-    // 每天0点重置
     if (now.hour == 0 && now.minute == 0) {
       _checkedToday = false;
     }
   }
 
+  static Future<void> _showNotification(String title, String body) async {
+    try {
+      await _notifications.show(
+        1001,
+        title,
+        body,
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'glados_checkin',
+            '签到助手',
+            channelDescription: '签到结果通知',
+            importance: Importance.defaultImportance,
+            priority: Priority.defaultPriority,
+          ),
+        ),
+      );
+    } catch (_) {}
+  }
+
   static Future<String> runCheckin() async {
     final cookies = await StorageService.getCookies();
     final pushToken = await StorageService.getPushToken();
-    if (cookies.isEmpty) return '未添加 Cookie';
+    if (cookies.isEmpty) {
+      await _showNotification('签到助手', '未添加 Cookie');
+      return '未添加 Cookie';
+    }
 
     final results = <String>[];
     for (final cookie in cookies) {
@@ -71,8 +109,17 @@ class ScheduleService {
     }
 
     final content = results.join('\n');
+
+    // 显示系统通知
+    final hasSuccess = content.contains('签到成功');
+    await _showNotification(
+      hasSuccess ? '签到成功 ✅' : '签到结果',
+      content.length > 50 ? '${content.substring(0, 50)}...' : content,
+    );
+
+    // PushPlus 推送
     if (pushToken.isNotEmpty) {
-      await ApiService.pushNotification(pushToken, 'GLaDOS 签到结果', content.replaceAll('\n', '<br>'));
+      await ApiService.pushNotification(pushToken, '签到助手', content.replaceAll('\n', '<br>'));
     }
     return content;
   }
