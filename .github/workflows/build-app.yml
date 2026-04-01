@@ -35,6 +35,15 @@ jobs:
         run: |
           git checkout HEAD -- app/lib app/pubspec.yaml app/assets
 
+      - name: Patch AndroidManifest for INTERNET permission
+        run: |
+          MANIFEST="app/android/app/src/main/AndroidManifest.xml"
+          if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
+            sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <application|' "$MANIFEST"
+          fi
+          echo "=== Manifest ==="
+          cat "$MANIFEST"
+
       - name: Install dependencies
         working-directory: app
         run: flutter pub get
