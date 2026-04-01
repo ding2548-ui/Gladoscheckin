@@ -1,6 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 import 'storage_service.dart';
 
@@ -30,42 +31,55 @@ class ScheduleService {
         ?.createNotificationChannel(channel);
   }
 
-  static Future<void> scheduleDaily(int hour, int minute) async {
+  /// 清除 flutter_local_notifications 的旧缓存数据，避免反序列化报错
+  static Future<void> _clearNotificationCache() async {
     try {
-      await _plugin.zonedSchedule(
-        _checkinNotificationId,
-        'GLaDOS 签到',
-        '每日签到即将执行...',
-        _nextInstanceOfTime(hour, minute),
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'glados_checkin',
-            'GLaDOS 签到',
-            channelDescription: 'GLaDOS 自动签到通知',
-            importance: Importance.low,
-            priority: Priority.low,
-            ongoing: true,
-            autoCancel: false,
-          ),
+      final prefs = await SharedPreferences.getInstance();
+      // flutter_local_notifications 用这些 key 存缓存
+      final keys = prefs.getKeys().where((k) =>
+          k == 'flutter_local_notifications_scheduled_notifications' ||
+          k.contains('notification'));
+      for (final key in keys) {
+        if (key.startsWith('flutter_local_notifications')) {
+          await prefs.remove(key);
+        }
+      }
+    } catch (_) {}
+  }
+
+  static Future<void> scheduleDaily(int hour, int minute) async {
+    // 先清缓存，避免 Missing type parameter
+    await _clearNotificationCache();
+
+    await _plugin.zonedSchedule(
+      _checkinNotificationId,
+      'GLaDOS 签到',
+      '每日签到即将执行...',
+      _nextInstanceOfTime(hour, minute),
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'glados_checkin',
+          'GLaDOS 签到',
+          channelDescription: 'GLaDOS 自动签到通知',
+          importance: Importance.low,
+          priority: Priority.low,
+          ongoing: true,
+          autoCancel: false,
         ),
-        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.time,
-        payload: 'checkin',
-      );
-      _scheduled = true;
-    } catch (e) {
-      _scheduled = false;
-      rethrow;
-    }
+      ),
+      androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+      matchDateTimeComponents: DateTimeComponents.time,
+      payload: 'checkin',
+    );
+    _scheduled = true;
   }
 
   static Future<void> cancelSchedule() async {
     try {
+      await _clearNotificationCache();
       await _plugin.cancel(_checkinNotificationId);
-    } catch (e) {
-      // 忽略 cancel 时的 Missing type parameter 错误
-    }
+    } catch (_) {}
     _scheduled = false;
   }
 
