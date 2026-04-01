@@ -35,14 +35,13 @@ jobs:
         run: |
           git checkout HEAD -- app/lib app/pubspec.yaml app/assets
 
-      - name: Patch AndroidManifest for INTERNET permission
+      - name: Patch AndroidManifest
         run: |
           MANIFEST="app/android/app/src/main/AndroidManifest.xml"
+          # INTERNET permission
           if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
-            sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <application|' "$MANIFEST"
+            sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"/>\n    <application|' "$MANIFEST"
           fi
-          echo "=== Manifest ==="
-          cat "$MANIFEST"
 
       - name: Install dependencies
         working-directory: app
@@ -59,5 +58,5 @@ jobs:
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: glados-checkin-apk
+          name: portal-guard-apk
           path: app/build/app/outputs/flutter-apk/app-release.apk

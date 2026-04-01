@@ -11,8 +11,8 @@ class CheckinResult {
 
   factory CheckinResult.success(String email, int points, int leftDays, String msg) =>
       CheckinResult._(email, points, leftDays, msg, CheckinStatus.success);
-  factory CheckinResult.repeat(String email, int leftDays) =>
-      CheckinResult._(email, 0, leftDays, '今日已签到', CheckinStatus.repeat);
+  factory CheckinResult.repeat(String email, int leftDays, String msg) =>
+      CheckinResult._(email, 0, leftDays, msg, CheckinStatus.repeat);
   factory CheckinResult.fail(String email, String msg) =>
       CheckinResult._(email, 0, 0, msg, CheckinStatus.fail);
   factory CheckinResult.error(String msg) =>

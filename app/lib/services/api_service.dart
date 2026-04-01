@@ -17,6 +17,27 @@ class ApiService {
     'content-type': 'application/json;charset=UTF-8',
   };
 
+  static String translateMessage(String msg) {
+    if (msg.contains('Checkin! Got')) {
+      final match = RegExp(r'Got (\d+) points').firstMatch(msg);
+      if (match != null) return '签到成功，获得 ${match.group(1)} 点';
+      return '签到成功';
+    }
+    if (msg.contains("Today's observation logged")) {
+      return '今日已签到，明天再来获取更多点数';
+    }
+    if (msg.contains('Checkin Repeats!')) {
+      return '今日已签到，明天再来';
+    }
+    if (msg.contains('Return tomorrow')) {
+      return '今日已签到，明天再来获取更多点数';
+    }
+    if (msg.contains('need to login') || msg.contains('login')) {
+      return 'Cookie 已过期，请重新获取';
+    }
+    return msg;
+  }
+
   static Future<CheckinResult> checkin(String cookie) async {
     try {
       final resp = await http.post(
@@ -32,17 +53,18 @@ class ApiService {
       final data = jsonDecode(resp.body);
       final msg = data['message'] ?? '';
       final points = data['points'] ?? 0;
+      final translated = translateMessage(msg);
 
       final status = await _getStatus(cookie);
       final email = status['email'] ?? '';
       final leftDays = status['leftDays'] ?? 0;
 
       if (msg.contains('Checkin! Got')) {
-        return CheckinResult.success(email, points, leftDays, msg);
-      } else if (msg.contains('Checkin Repeats!')) {
-        return CheckinResult.repeat(email, leftDays);
+        return CheckinResult.success(email, points, leftDays, translated);
+      } else if (msg.contains('observation logged') || msg.contains('Return tomorrow') || msg.contains('Checkin Repeats')) {
+        return CheckinResult.repeat(email, leftDays, translated);
       } else {
-        return CheckinResult.fail(email, msg);
+        return CheckinResult.fail(email, translated);
       }
     } catch (e) {
       return CheckinResult.error(e.toString());
