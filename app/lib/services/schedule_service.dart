@@ -7,6 +7,7 @@ import 'storage_service.dart';
 class ScheduleService {
   static final FlutterLocalNotificationsPlugin _plugin = FlutterLocalNotificationsPlugin();
   static const int _checkinNotificationId = 1001;
+  static bool _scheduled = false;
 
   static Future<void> init() async {
     tz.initializeTimeZones();
@@ -18,7 +19,6 @@ class ScheduleService {
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
 
-    // Create notification channel
     const channel = AndroidNotificationChannel(
       'glados_checkin',
       'GLaDOS 签到',
@@ -31,36 +31,51 @@ class ScheduleService {
   }
 
   static Future<void> scheduleDaily(int hour, int minute) async {
-    await _plugin.zonedSchedule(
-      _checkinNotificationId,
-      'GLaDOS 签到',
-      '每日签到即将执行...',
-      _nextInstanceOfTime(hour, minute),
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'glados_checkin',
-          'GLaDOS 签到',
-          channelDescription: 'GLaDOS 自动签到通知',
-          importance: Importance.low,
-          priority: Priority.low,
-          ongoing: true,
-          autoCancel: false,
+    try {
+      await _plugin.zonedSchedule(
+        _checkinNotificationId,
+        'GLaDOS 签到',
+        '每日签到即将执行...',
+        _nextInstanceOfTime(hour, minute),
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'glados_checkin',
+            'GLaDOS 签到',
+            channelDescription: 'GLaDOS 自动签到通知',
+            importance: Importance.low,
+            priority: Priority.low,
+            ongoing: true,
+            autoCancel: false,
+          ),
         ),
-      ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: DateTimeComponents.time,
-      payload: 'checkin',
-    );
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+        uiLocalNotificationDateInterpretation: UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+        payload: 'checkin',
+      );
+      _scheduled = true;
+    } catch (e) {
+      _scheduled = false;
+      rethrow;
+    }
   }
 
   static Future<void> cancelSchedule() async {
-    await _plugin.cancel(_checkinNotificationId);
+    try {
+      await _plugin.cancel(_checkinNotificationId);
+    } catch (e) {
+      // 忽略 cancel 时的 Missing type parameter 错误
+    }
+    _scheduled = false;
   }
 
   static Future<bool> isScheduled() async {
-    final pending = await _plugin.pendingNotificationRequests();
-    return pending.any((n) => n.id == _checkinNotificationId);
+    try {
+      final pending = await _plugin.pendingNotificationRequests();
+      return pending.any((n) => n.id == _checkinNotificationId);
+    } catch (_) {
+      return _scheduled;
+    }
   }
 
   static tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
@@ -97,7 +112,6 @@ class ScheduleService {
 
     final content = results.join('\n');
 
-    // Push notification
     if (pushToken.isNotEmpty) {
       await ApiService.pushNotification(pushToken, 'GLaDOS 签到结果', content.replaceAll('\n', '<br>'));
     }
