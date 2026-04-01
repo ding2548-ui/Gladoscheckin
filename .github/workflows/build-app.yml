@@ -22,94 +22,15 @@ jobs:
           flutter create --project-name portal_guard --org com.portalguard .
           git checkout HEAD -- lib pubspec.yaml assets
 
-      - name: Patch Android manifest
+      - name: Patch Android files
         run: |
           M="app/android/app/src/main/AndroidManifest.xml"
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"/>\n    <application|' "$M"
+          cp app/android_template/build.gradle.kts app/android/app/build.gradle.kts
+          mkdir -p app/android/app/src/main/kotlin/com/portalguard
+          cp app/android_template/MainActivity.kt app/android/app/src/main/kotlin/com/portalguard/MainActivity.kt
 
-      - name: Generate build.gradle.kts with proper config
-        run: |
-          mkdir -p "app/android/app"
-          cat > "app/android/app/build.gradle.kts" << 'KTS'
-plugins {
-    id("com.android.application")
-    id("kotlin-android")
-    id("dev.flutter.flutter-gradle-plugin")
-}
-
-android {
-    namespace = "com.portalguard"
-    compileSdk = flutter.compileSdkVersion
-
-    defaultConfig {
-        applicationId = "com.portalguard"
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
-        versionCode = flutter.versionCode
-        versionName = flutter.versionName
-    }
-
-    buildTypes {
-        release {
-            signingConfig = signingConfigs.getByName("debug")
-        }
-    }
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
-        isCoreLibraryDesugaringEnabled = true
-    }
-
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_1_8.toString()
-    }
-
-    ndkVersion = "27.0.12077973"
-}
-
-dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
-}
-KTS
-
-      - name: Create MainActivity with battery channel
-        run: |
-          mkdir -p "app/android/app/src/main/kotlin/com/portalguard"
-          cat > "app/android/app/src/main/kotlin/com/portalguard/MainActivity.kt" << 'EOF'
-          package com.portalguard
-          import io.flutter.embedding.android.FlutterActivity
-          import io.flutter.embedding.engine.FlutterEngine
-          import io.flutter.plugin.common.MethodChannel
-          import android.content.Intent
-          import android.net.Uri
-          import android.os.PowerManager
-          import android.provider.Settings
-          import android.content.Context
-          class MainActivity: FlutterActivity() {
-            private val CH = "glados/battery"
-            override fun configureFlutterEngine(e: FlutterEngine) {
-              super.configureFlutterEngine(e)
-              MethodChannel(e.dartExecutor.binaryMessenger, CH).setMethodCallHandler { call, res ->
-                when (call.method) {
-                  "requestIgnoreBatteryOpt" -> {
-                    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-                    if (!pm.isIgnoringBatteryOptimizations(packageName))
-                      startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
-                    res.success("done")
-                  }
-                  "isIgnoringBatteryOpt" -> {
-                    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
-                    res.success(pm.isIgnoringBatteryOptimizations(packageName))
-                  }
-                  else -> res.notImplemented()
-                }
-              }
-            }
-          }
-          EOF
-
-      - name: Generate icons and build APK
+      - name: Build APK
         working-directory: app
         run: flutter pub get && flutter pub run flutter_launcher_icons || true && flutter build apk --release
 
