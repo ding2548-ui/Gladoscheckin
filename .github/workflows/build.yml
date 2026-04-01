@@ -1,0 +1,34 @@
+name: Build APK
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Install Gradle
+      run: |
+        wget -q https://services.gradle.org/distributions/gradle-8.5-bin.zip -O /tmp/gradle.zip
+        unzip -q /tmp/gradle.zip -d /opt
+        echo "/opt/gradle-8.5/bin" >> $GITHUB_PATH
+
+    - name: Build Debug APK
+      run: gradle assembleDebug
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: glados-checkin-debug
+        path: app/build/outputs/apk/debug/*.apk
