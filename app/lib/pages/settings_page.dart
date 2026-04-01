@@ -14,6 +14,7 @@ class SettingsPage extends StatefulWidget {
 class _SettingsPageState extends State<SettingsPage> {
   final _tokenController = TextEditingController();
   bool _tokenSaved = false;
+  String _maskedToken = '';
   bool _scheduleEnabled = false;
   int _scheduleHour = 8;
   int _scheduleMinute = 0;
@@ -43,7 +44,7 @@ class _SettingsPageState extends State<SettingsPage> {
     if (mounted) {
       setState(() {
         _tokenSaved = token.isNotEmpty;
-        _tokenController.text = _maskToken(token);
+        _maskedToken = _mask(token);
         _scheduleEnabled = scheduled;
         _scheduleHour = hour;
         _scheduleMinute = minute;
@@ -53,46 +54,41 @@ class _SettingsPageState extends State<SettingsPage> {
     }
   }
 
-  String _maskToken(String token) {
-    if (token.length <= 8) return token;
-    return '${token.substring(0, 4)}${'*' * (token.length - 8)}${token.substring(token.length - 4)}';
+  String _mask(String t) {
+    if (t.length <= 4) return '•' * t.length;
+    return '••••${t.substring(t.length - 4)}';
   }
 
-  Future<int> _getInt(String key, int def) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt(key) ?? def;
+  Future<int> _getInt(String k, int d) async {
+    return (await SharedPreferences.getInstance()).getInt(k) ?? d;
   }
 
-  Future<void> _setInt(String key, int val) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt(key, val);
+  Future<void> _setInt(String k, int v) async {
+    await (await SharedPreferences.getInstance()).setInt(k, v);
   }
 
-  Future<void> _saveToken() async {
-    final token = _tokenController.text.trim();
-    if (token.isEmpty) return;
-    await StorageService.setPushToken(token);
+  Future<void> _saveToken(String token) async {
+    if (token.trim().isEmpty) return;
+    await StorageService.setPushToken(token.trim());
     if (mounted) {
       setState(() {
         _tokenSaved = true;
-        _tokenController.text = _maskToken(token);
+        _maskedToken = _mask(token.trim());
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Token 已保存')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Token 已保存')));
     }
   }
 
-  void _editToken() {
-    final controller = TextEditingController();
+  void _showTokenDialog({bool isEdit = false}) {
+    final ctrl = TextEditingController();
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('修改 Token'),
+        title: Text(isEdit ? '修改 Token' : '添加 Token'),
         content: TextField(
-          controller: controller,
+          controller: ctrl,
           decoration: const InputDecoration(
-            hintText: '输入新的 PushPlus Token',
+            hintText: '输入 PushPlus Token',
             border: OutlineInputBorder(),
           ),
           autofocus: true,
@@ -100,18 +96,9 @@ class _SettingsPageState extends State<SettingsPage> {
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
           FilledButton(
-            onPressed: () async {
-              final token = controller.text.trim();
-              if (token.isNotEmpty) {
-                await StorageService.setPushToken(token);
-                if (mounted) {
-                  setState(() {
-                    _tokenSaved = true;
-                    _tokenController.text = _maskToken(token);
-                  });
-                }
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
+            onPressed: () {
+              _saveToken(ctrl.text);
+              Navigator.pop(ctx);
             },
             child: const Text('保存'),
           ),
@@ -122,17 +109,12 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _clearToken() async {
     await StorageService.setPushToken('');
-    if (mounted) {
-      setState(() {
-        _tokenSaved = false;
-        _tokenController.text = '';
-      });
-    }
+    if (mounted) setState(() { _tokenSaved = false; _maskedToken = ''; });
   }
 
-  Future<void> _toggleSchedule(bool enabled) async {
+  Future<void> _toggleSchedule(bool on) async {
     try {
-      if (enabled) {
+      if (on) {
         await ScheduleService.scheduleDaily(_scheduleHour, _scheduleMinute);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -142,18 +124,12 @@ class _SettingsPageState extends State<SettingsPage> {
       } else {
         await ScheduleService.cancelSchedule();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('定时签到已关闭')),
-          );
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('定时签到已关闭')));
         }
       }
-      if (mounted) setState(() => _scheduleEnabled = enabled);
+      if (mounted) setState(() => _scheduleEnabled = on);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('操作失败: $e')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('操作失败: $e')));
     }
   }
 
@@ -163,10 +139,7 @@ class _SettingsPageState extends State<SettingsPage> {
       initialTime: TimeOfDay(hour: _scheduleHour, minute: _scheduleMinute),
     );
     if (picked != null) {
-      setState(() {
-        _scheduleHour = picked.hour;
-        _scheduleMinute = picked.minute;
-      });
+      setState(() { _scheduleHour = picked.hour; _scheduleMinute = picked.minute; });
       await _setInt('schedule_hour', picked.hour);
       await _setInt('schedule_minute', picked.minute);
       if (_scheduleEnabled) await _toggleSchedule(true);
@@ -175,39 +148,24 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _requestBatteryOpt() async {
     try {
-      const channel = MethodChannel('glados/battery');
-      await channel.invokeMethod('requestIgnoreBatteryOpt');
+      const ch = MethodChannel('glados/battery');
+      await ch.invokeMethod('requestIgnoreBatteryOpt');
       await Future.delayed(const Duration(seconds: 2));
-      final ignored = await channel.invokeMethod('isIgnoringBatteryOpt') ?? false;
+      final ok = await ch.invokeMethod('isIgnoringBatteryOpt') ?? false;
       if (mounted) {
-        setState(() {
-          _batteryIgnored = ignored;
-          _batteryStatus = ignored ? '已忽略' : '未忽略';
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(ignored ? '电池优化已忽略 ✅' : '未完成授权')),
-        );
+        setState(() { _batteryIgnored = ok; _batteryStatus = ok ? '已忽略' : '未忽略'; });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ok ? '电池优化已忽略 ✅' : '未完成授权')));
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('请求失败: $e')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('请求失败: $e')));
     }
   }
 
-  Future<void> _openSystemSettings(String action) async {
+  Future<void> _openAppSettings() async {
     try {
-      const channel = MethodChannel('glados/battery');
-      await channel.invokeMethod('openSettings', {'action': action});
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('打开设置失败: $e')),
-        );
-      }
-    }
+      const ch = MethodChannel('glados/battery');
+      await ch.invokeMethod('openAppSettings');
+    } catch (_) {}
   }
 
   @override
@@ -217,7 +175,7 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // 推送通知
+          // === 推送通知 ===
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -229,172 +187,111 @@ class _SettingsPageState extends State<SettingsPage> {
                   const Text('签到结果推送到微信', style: TextStyle(fontSize: 13, color: Colors.grey)),
                   const SizedBox(height: 16),
                   if (!_tokenSaved)
-                    Column(
-                      children: [
-                        TextField(
-                          controller: _tokenController,
-                          decoration: InputDecoration(
-                            hintText: '请输入 PushPlus Token',
-                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                            filled: true,
-                          ),
+                    Column(children: [
+                      TextField(
+                        controller: _tokenController,
+                        decoration: InputDecoration(
+                          hintText: '请输入 PushPlus Token',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                          filled: true,
                         ),
-                        const SizedBox(height: 16),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton(onPressed: _saveToken, child: const Text('保存')),
-                        ),
-                      ],
-                    )
-                  else
-                    Column(
-                      children: [
-                        ListTile(
-                          contentPadding: EdgeInsets.zero,
-                          leading: const Icon(Icons.key, color: Colors.green),
-                          title: const Text('Token'),
-                          subtitle: Text(
-                            _tokenController.text,
-                            style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                          ),
-                          trailing: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              IconButton(
-                                icon: const Icon(Icons.edit),
-                                onPressed: _editToken,
-                                tooltip: '修改',
-                              ),
-                              IconButton(
-                                icon: const Icon(Icons.delete_outline),
-                                onPressed: _clearToken,
-                                tooltip: '清除',
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // 定时签到
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Text('定时签到', style: Theme.of(context).textTheme.titleMedium),
-                      const Spacer(),
-                      Switch(
-                        value: _scheduleEnabled,
-                        onChanged: _toggleSchedule,
                       ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  const Text('开启后每天自动签到', style: TextStyle(fontSize: 13, color: Colors.grey)),
-                  const SizedBox(height: 16),
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.schedule),
-                    title: const Text('签到时间'),
-                    subtitle: Text(
-                      '${_scheduleHour.toString().padLeft(2, '0')}:${_scheduleMinute.toString().padLeft(2, '0')}',
-                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      const SizedBox(height: 12),
+                      SizedBox(width: double.infinity, child: FilledButton(onPressed: () => _saveToken(_tokenController.text), child: const Text('保存'))),
+                    ])
+                  else
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.key, color: Colors.green),
+                      title: const Text('Token 已配置'),
+                      subtitle: Text(_maskedToken, style: const TextStyle(letterSpacing: 3, fontSize: 16)),
+                      trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+                        IconButton(icon: const Icon(Icons.edit), onPressed: () => _showTokenDialog(isEdit: true), tooltip: '修改'),
+                        IconButton(icon: const Icon(Icons.delete_outline), onPressed: _clearToken, tooltip: '清除'),
+                      ]),
                     ),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: _pickTime,
-                  ),
                 ],
               ),
             ),
           ),
           const SizedBox(height: 16),
 
-          // 保后台设置
+          // === 定时签到 ===
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('保后台设置', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 8),
-                  const Text('防止系统杀后台导致定时签到失效', style: TextStyle(fontSize: 13, color: Colors.grey)),
-                  const SizedBox(height: 16),
-                  // 电池优化
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      _batteryIgnored ? Icons.battery_saver : Icons.battery_alert,
-                      color: _batteryIgnored ? Colors.green : Colors.orange,
-                    ),
-                    title: const Text('忽略电池优化'),
-                    subtitle: Text(_batteryStatus),
-                    trailing: FilledButton.tonal(
-                      onPressed: _batteryIgnored ? null : _requestBatteryOpt,
-                      child: Text(_batteryIgnored ? '已开启' : '去开启'),
-                    ),
-                  ),
-                  const Divider(),
-                  // 自启动
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.power_settings_new, color: Colors.orange),
-                    title: const Text('自启动权限'),
-                    subtitle: const Text('请在系统设置中开启自启动'),
-                    trailing: FilledButton.tonal(
-                      onPressed: () => _openSystemSettings('autostart'),
-                      child: const Text('去设置'),
-                    ),
-                  ),
-                  const Divider(),
-                  // 锁定后台
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    leading: const Icon(Icons.lock_open, color: Colors.orange),
-                    title: const Text('锁定后台'),
-                    subtitle: const Text('在最近任务中锁定本应用'),
-                    trailing: FilledButton.tonal(
-                      onPressed: () => _openSystemSettings('recent_apps'),
-                      child: const Text('去设置'),
-                    ),
-                  ),
-                ],
-              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  Text('定时签到', style: Theme.of(context).textTheme.titleMedium),
+                  const Spacer(),
+                  Switch(value: _scheduleEnabled, onChanged: _toggleSchedule),
+                ]),
+                const SizedBox(height: 8),
+                const Text('开启后每天自动签到', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                const SizedBox(height: 16),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.schedule),
+                  title: const Text('签到时间'),
+                  subtitle: Text('${_scheduleHour.toString().padLeft(2, '0')}:${_scheduleMinute.toString().padLeft(2, '0')}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _pickTime,
+                ),
+              ]),
             ),
           ),
           const SizedBox(height: 16),
 
-          // 使用说明
+          // === 保后台设置 ===
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('使用说明', style: Theme.of(context).textTheme.titleMedium),
-                  const SizedBox(height: 12),
-                  const Text('1. 点击首页"管理"添加 Cookie', style: TextStyle(fontSize: 14)),
-                  const SizedBox(height: 4),
-                  const Text('2. 前往 GLaDOS 签到页面，按 F12 打开开发者工具', style: TextStyle(fontSize: 14)),
-                  const SizedBox(height: 4),
-                  const Text('3. 切换到 Network 页面，刷新页面', style: TextStyle(fontSize: 14)),
-                  const SizedBox(height: 4),
-                  const Text('4. 点击第一个请求，找到 Cookie 复制', style: TextStyle(fontSize: 14)),
-                  const SizedBox(height: 4),
-                  const Text('5. 在 pushplus.plus 获取 Token 用于微信推送', style: TextStyle(fontSize: 14)),
-                  const SizedBox(height: 4),
-                  const Text('6. 开启定时签到，设置每天执行时间', style: TextStyle(fontSize: 14)),
-                ],
-              ),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('保后台设置', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 8),
+                const Text('防止系统杀后台导致定时签到失效', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                const SizedBox(height: 16),
+                // 电池优化
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(_batteryIgnored ? Icons.battery_saver : Icons.battery_alert, color: _batteryIgnored ? Colors.green : Colors.orange),
+                  title: const Text('忽略电池优化'),
+                  subtitle: Text(_batteryStatus),
+                  trailing: FilledButton.tonal(onPressed: _batteryIgnored ? null : _requestBatteryOpt, child: Text(_batteryIgnored ? '已开启' : '去开启')),
+                ),
+                const Divider(),
+                // 自启动 + 锁定后台
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.power_settings_new, color: Colors.orange),
+                  title: const Text('自启动 / 锁定后台'),
+                  subtitle: const Text('打开后请手动开启自启动并锁定'),
+                  trailing: FilledButton.tonal(onPressed: _openAppSettings, child: const Text('去设置')),
+                ),
+              ]),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // === 使用说明 ===
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('使用说明', style: Theme.of(context).textTheme.titleMedium),
+                const SizedBox(height: 12),
+                const Text('1. 点击首页"管理"添加 Cookie', style: TextStyle(fontSize: 14)),
+                const SizedBox(height: 4),
+                const Text('2. 前往 GLaDOS 签到页面，按 F12 打开开发者工具', style: TextStyle(fontSize: 14)),
+                const SizedBox(height: 4),
+                const Text('3. 切换到 Network 页面，刷新页面', style: TextStyle(fontSize: 14)),
+                const SizedBox(height: 4),
+                const Text('4. 点击第一个请求，找到 Cookie 复制', style: TextStyle(fontSize: 14)),
+                const SizedBox(height: 4),
+                const Text('5. 在 pushplus.plus 获取 Token 用于微信推送', style: TextStyle(fontSize: 14)),
+                const SizedBox(height: 4),
+                const Text('6. 开启定时签到 + 保后台，即可全自动运行', style: TextStyle(fontSize: 14)),
+              ]),
             ),
           ),
         ],
