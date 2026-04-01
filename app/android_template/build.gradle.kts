@@ -17,9 +17,18 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("app/keystore.jks")
+            storePassword = "signhelper"
+            keyAlias = "signhelper"
+            keyPassword = "signhelper"
+        }
+    }
+
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

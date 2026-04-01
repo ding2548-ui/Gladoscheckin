@@ -168,17 +168,17 @@ class _SettingsPageState extends State<SettingsPage> {
     } catch (_) {}
   }
 
-  Future<void> _requestNotificationPermission() async {
+  Future<void> _openNotificationSettings() async {
     try {
       const ch = MethodChannel('glados/battery');
-      final granted = await ch.invokeMethod('requestNotificationPermission') ?? false;
+      await ch.invokeMethod('openNotificationSettings');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(granted ? '通知权限已开启 ✅' : '请在系统设置中手动开启通知')),
+          const SnackBar(content: Text('请在设置中手动开启通知权限')),
         );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('请求失败: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('打开失败: $e')));
     }
   }
 
@@ -271,7 +271,7 @@ class _SettingsPageState extends State<SettingsPage> {
                   leading: const Icon(Icons.notifications, color: Colors.blue),
                   title: const Text('通知权限'),
                   subtitle: const Text('签到结果需要通知提醒'),
-                  trailing: FilledButton.tonal(onPressed: _requestNotificationPermission, child: const Text('去开启')),
+                  trailing: FilledButton.tonal(onPressed: _openNotificationSettings, child: const Text('去设置')),
                 ),
                 const Divider(),
                 // 电池优化

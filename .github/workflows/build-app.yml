@@ -31,6 +31,17 @@ jobs:
           mkdir -p app/android/app/src/main/kotlin/com/signhelper
           cp app/android_template/MainActivity.kt app/android/app/src/main/kotlin/com/signhelper/MainActivity.kt
 
+      - name: Generate keystore
+        run: |
+          keytool -genkey -v \
+            -keystore app/android/app/keystore.jks \
+            -alias signhelper \
+            -keyalg RSA -keysize 2048 \
+            -validity 3650 \
+            -storepass signhelper \
+            -keypass signhelper \
+            -dname "CN=SignHelper, OU=SignHelper, O=SignHelper, L=CN"
+
       - name: Build APK (arm64 only)
         working-directory: app
         run: flutter pub get && flutter pub run flutter_launcher_icons || true && flutter build apk --release --target-platform android-arm64

@@ -37,18 +37,14 @@ class MainActivity: FlutterActivity() {
                         res.success("opened")
                     } catch (e: Exception) { res.error("ERR", e.message, null) }
                 }
-                "requestNotificationPermission" -> {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                        try {
-                            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
-                                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
-                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            startActivity(intent)
-                            res.success(true)
-                        } catch (e: Exception) { res.error("ERR", e.message, null) }
-                    } else {
-                        res.success(true)
-                    }
+                "openNotificationSettings" -> {
+                    try {
+                        val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                            .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        startActivity(intent)
+                        res.success("opened")
+                    } catch (e: Exception) { res.error("ERR", e.message, null) }
                 }
                 else -> res.notImplemented()
             }
