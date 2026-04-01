@@ -1,5 +1,5 @@
-name: portal_guard
-description: Portal Guard - GLaDOS 签到助手
+name: sign_helper
+description: 签到助手 - GLaDOS 自动签到
 publish_to: 'none'
 version: 1.0.0+1
 

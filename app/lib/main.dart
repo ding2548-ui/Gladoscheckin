@@ -5,16 +5,16 @@ import 'pages/home_page.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await ScheduleService.init();
-  runApp(const GladosApp());
+  runApp(const SignApp());
 }
 
-class GladosApp extends StatelessWidget {
-  const GladosApp({super.key});
+class SignApp extends StatelessWidget {
+  const SignApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'GLaDOS 签到',
+      title: '签到助手',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(

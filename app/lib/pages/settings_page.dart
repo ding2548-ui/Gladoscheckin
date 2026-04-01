@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/storage_service.dart';
 import '../services/schedule_service.dart';
@@ -15,6 +16,8 @@ class _SettingsPageState extends State<SettingsPage> {
   bool _scheduleEnabled = false;
   int _scheduleHour = 8;
   int _scheduleMinute = 0;
+  bool _batteryIgnored = false;
+  String _batteryStatus = '检查中...';
 
   @override
   void initState() {
@@ -24,41 +27,41 @@ class _SettingsPageState extends State<SettingsPage> {
 
   Future<void> _loadSettings() async {
     final token = await StorageService.getPushToken();
+    final hour = await _getInt('schedule_hour', 8);
+    final minute = await _getInt('schedule_minute', 0);
     final scheduled = await ScheduleService.isScheduled();
-    final hour = await _getScheduleHour();
-    final minute = await _getScheduleMinute();
-    setState(() {
-      _tokenController.text = token;
-      _scheduleEnabled = scheduled;
-      _scheduleHour = hour;
-      _scheduleMinute = minute;
-    });
+
+    // 检查电池优化状态
+    String batteryStatus = '未知';
+    bool batteryIgnored = false;
+    try {
+      const channel = MethodChannel('glados/battery');
+      batteryIgnored = await channel.invokeMethod('isIgnoringBatteryOpt') ?? false;
+      batteryStatus = batteryIgnored ? '已忽略' : '未忽略';
+    } catch (e) {
+      batteryStatus = '检查失败';
+    }
+
+    if (mounted) {
+      setState(() {
+        _tokenController.text = token;
+        _scheduleEnabled = scheduled;
+        _scheduleHour = hour;
+        _scheduleMinute = minute;
+        _batteryIgnored = batteryIgnored;
+        _batteryStatus = batteryStatus;
+      });
+    }
   }
 
-  Future<int> _getScheduleHour() async {
-    final prefs = await _getPrefs();
-    return prefs.getInt('schedule_hour') ?? 8;
+  Future<int> _getInt(String key, int def) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(key) ?? def;
   }
 
-  Future<int> _getScheduleMinute() async {
-    final prefs = await _getPrefs();
-    return prefs.getInt('schedule_minute') ?? 0;
-  }
-
-  Future<void> _setScheduleTime(int hour, int minute) async {
-    final prefs = await _getPrefs();
-    await prefs.setInt('schedule_hour', hour);
-    await prefs.setInt('schedule_minute', minute);
-  }
-
-  Future<dynamic> _getPrefs() async {
-    // Import SharedPreferences
-    final SharedPreferences prefs = await _getSharedPrefs();
-    return prefs;
-  }
-
-  Future<SharedPreferences> _getSharedPrefs() async {
-    return await SharedPreferences.getInstance();
+  Future<void> _setInt(String key, int val) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(key, val);
   }
 
   Future<void> _saveToken() async {
@@ -72,20 +75,27 @@ class _SettingsPageState extends State<SettingsPage> {
   }
 
   Future<void> _toggleSchedule(bool enabled) async {
-    if (enabled) {
-      await ScheduleService.scheduleDaily(_scheduleHour, _scheduleMinute);
-      setState(() => _scheduleEnabled = true);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('定时签到已开启，每天 $_scheduleHour:$_scheduleMinute 执行')),
-        );
+    try {
+      if (enabled) {
+        await ScheduleService.scheduleDaily(_scheduleHour, _scheduleMinute);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('定时签到已开启，每天 ${_scheduleHour.toString().padLeft(2, '0')}:${_scheduleMinute.toString().padLeft(2, '0')} 执行')),
+          );
+        }
+      } else {
+        await ScheduleService.cancelSchedule();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('定时签到已关闭')),
+          );
+        }
       }
-    } else {
-      await ScheduleService.cancelSchedule();
-      setState(() => _scheduleEnabled = false);
+      if (mounted) setState(() => _scheduleEnabled = enabled);
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('定时签到已关闭')),
+          SnackBar(content: Text('操作失败: $e')),
         );
       }
     }
@@ -101,9 +111,35 @@ class _SettingsPageState extends State<SettingsPage> {
         _scheduleHour = picked.hour;
         _scheduleMinute = picked.minute;
       });
-      await _setScheduleTime(picked.hour, picked.minute);
+      await _setInt('schedule_hour', picked.hour);
+      await _setInt('schedule_minute', picked.minute);
       if (_scheduleEnabled) {
-        await ScheduleService.scheduleDaily(picked.hour, picked.minute);
+        await _toggleSchedule(true);
+      }
+    }
+  }
+
+  Future<void> _requestBatteryOpt() async {
+    try {
+      const channel = MethodChannel('glados/battery');
+      await channel.invokeMethod('requestIgnoreBatteryOpt');
+      // 延迟检查状态
+      await Future.delayed(const Duration(seconds: 2));
+      final ignored = await channel.invokeMethod('isIgnoringBatteryOpt') ?? false;
+      if (mounted) {
+        setState(() {
+          _batteryIgnored = ignored;
+          _batteryStatus = ignored ? '已忽略' : '未忽略（可能已取消）';
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ignored ? '电池优化已忽略 ✅' : '未完成授权')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('请求失败: $e')),
+        );
       }
     }
   }
@@ -115,16 +151,16 @@ class _SettingsPageState extends State<SettingsPage> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // PushPlus Token
+          // 推送通知
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('PushPlus Token', style: Theme.of(context).textTheme.titleMedium),
+                  Text('推送通知', style: Theme.of(context).textTheme.titleMedium),
                   const SizedBox(height: 8),
-                  const Text('用于签到结果推送到微信', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  const Text('签到结果推送到微信', style: TextStyle(fontSize: 13, color: Colors.grey)),
                   const SizedBox(height: 16),
                   TextField(
                     controller: _tokenController,
@@ -156,7 +192,7 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 16),
 
-          // Schedule settings
+          // 定时签到
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -193,7 +229,55 @@ class _SettingsPageState extends State<SettingsPage> {
           ),
           const SizedBox(height: 16),
 
-          // Instructions
+          // 保后台
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('保后台设置', style: Theme.of(context).textTheme.titleMedium),
+                  const SizedBox(height: 8),
+                  const Text('防止系统杀后台导致定时签到失效', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                  const SizedBox(height: 16),
+                  // 电池优化
+                  ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      _batteryIgnored ? Icons.battery_saver : Icons.battery_alert,
+                      color: _batteryIgnored ? Colors.green : Colors.orange,
+                    ),
+                    title: const Text('忽略电池优化'),
+                    subtitle: Text(_batteryStatus),
+                    trailing: FilledButton.tonal(
+                      onPressed: _batteryIgnored ? null : _requestBatteryOpt,
+                      child: Text(_batteryIgnored ? '已开启' : '去开启'),
+                    ),
+                  ),
+                  const Divider(),
+                  // 自启动提醒
+                  const ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.power_settings_new, color: Colors.orange),
+                    title: Text('自启动权限'),
+                    subtitle: Text('请在系统设置中手动开启本应用的自启动权限'),
+                    trailing: Icon(Icons.chevron_right),
+                  ),
+                  const SizedBox(height: 8),
+                  const ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.lock_open, color: Colors.orange),
+                    title: Text('锁定后台'),
+                    subtitle: Text('建议在最近任务中锁定本应用，防止被清理'),
+                    trailing: Icon(Icons.chevron_right),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // 使用说明
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -213,6 +297,8 @@ class _SettingsPageState extends State<SettingsPage> {
                   const Text('5. 在 pushplus.plus 获取 Token 用于微信推送', style: TextStyle(fontSize: 14)),
                   const SizedBox(height: 4),
                   const Text('6. 开启定时签到，设置每天执行时间', style: TextStyle(fontSize: 14)),
+                  const SizedBox(height: 4),
+                  const Text('7. 开启保后台设置，防止系统杀进程', style: TextStyle(fontSize: 14)),
                 ],
               ),
             ),

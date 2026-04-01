@@ -19,7 +19,7 @@ jobs:
       - name: Create Flutter project and restore source
         run: |
           cd app
-          flutter create --project-name portal_guard --org com.portalguard .
+          flutter create --project-name sign_helper --org com.signhelper .
           git checkout HEAD -- lib pubspec.yaml assets
 
       - name: Patch Android files
@@ -27,8 +27,8 @@ jobs:
           M="app/android/app/src/main/AndroidManifest.xml"
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"/>\n    <application|' "$M"
           cp app/android_template/build.gradle.kts app/android/app/build.gradle.kts
-          mkdir -p app/android/app/src/main/kotlin/com/portalguard
-          cp app/android_template/MainActivity.kt app/android/app/src/main/kotlin/com/portalguard/MainActivity.kt
+          mkdir -p app/android/app/src/main/kotlin/com/signhelper
+          cp app/android_template/MainActivity.kt app/android/app/src/main/kotlin/com/signhelper/MainActivity.kt
 
       - name: Build APK
         working-directory: app
@@ -36,5 +36,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: portal-guard-apk
+          name: sign-helper-apk
           path: app/build/app/outputs/flutter-apk/app-release.apk

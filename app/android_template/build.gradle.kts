@@ -5,12 +5,12 @@ plugins {
 }
 
 android {
-    namespace = "com.portalguard"
+    namespace = "com.signhelper"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = "27.0.12077973"
 
     defaultConfig {
-        applicationId = "com.portalguard"
+        applicationId = "com.signhelper"
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
