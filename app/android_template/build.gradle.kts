@@ -19,7 +19,7 @@ android {
 
     signingConfigs {
         create("release") {
-            storeFile = file("app/keystore.jks")
+            storeFile = file("keystore.jks")
             storePassword = "signhelper"
             keyAlias = "signhelper"
             keyPassword = "signhelper"
