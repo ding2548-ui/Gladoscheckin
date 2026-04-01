@@ -16,22 +16,16 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { flutter-version: '3.29.2', channel: 'stable' }
 
-      - name: Create Flutter project
+      - name: Create Flutter project and restore source
         run: |
           cd app
           flutter create --project-name portal_guard --org com.portalguard .
-          rm -rf lib test pubspec.yaml
-
-      - name: Copy source files
-        run: |
-          cp -r app/lib app/pubspec.yaml app/assets app/android/
+          git checkout HEAD -- lib pubspec.yaml assets
 
       - name: Patch manifest and add battery channel
         run: |
           M="app/android/app/src/main/AndroidManifest.xml"
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"/>\n    <application|' "$M"
-          
-          # Create MainActivity with battery channel
           mkdir -p "app/android/app/src/main/kotlin/com/portalguard"
           cat > "app/android/app/src/main/kotlin/com/portalguard/MainActivity.kt" << 'EOF'
           package com.portalguard
@@ -43,7 +37,6 @@ jobs:
           import android.os.PowerManager
           import android.provider.Settings
           import android.content.Context
-
           class MainActivity: FlutterActivity() {
             private val CH = "glados/battery"
             override fun configureFlutterEngine(e: FlutterEngine) {
@@ -67,7 +60,7 @@ jobs:
           }
           EOF
 
-      - name: Build
+      - name: Build APK
         working-directory: app
         run: flutter pub get && flutter pub run flutter_launcher_icons || true && flutter build apk --release
 
