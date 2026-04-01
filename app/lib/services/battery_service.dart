@@ -1,32 +1,27 @@
-import 'dart:io';
-import 'dart:convert';
-import 'package:http/http.dart' as http;
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 
 class BatteryService {
+  static const _channel = MethodChannel('glados/battery');
   static const String _key = 'battery_opt_requested';
 
-  /// 请求忽略电池优化（避免后台被杀）
-  static Future<String> requestIgnoreBatteryOpt() async {
+  /// 请求忽略电池优化
+  static Future<String> requestIgnore() async {
     try {
-      // 通过 platform channel 调用原生代码
-      const channel = MethodChannel('glados/battery');
-      final result = await channel.invokeMethod('requestIgnoreBatteryOpt');
+      final result = await _channel.invokeMethod<String>('requestIgnoreBatteryOpt');
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_key, true);
       return result ?? '已请求';
-    } catch (e) {
-      return '请求失败: $e';
+    } on PlatformException catch (e) {
+      return '请求失败: ${e.message}';
     }
   }
 
-  /// 检查是否已忽略电池优化
-  static Future<bool> isIgnoringBatteryOpt() async {
+  /// 检查是否已忽略
+  static Future<bool> isIgnoring() async {
     try {
-      const channel = MethodChannel('glados/battery');
-      final result = await channel.invokeMethod('isIgnoringBatteryOpt');
-      return result == true;
+      final result = await _channel.invokeMethod<bool>('isIgnoringBatteryOpt');
+      return result ?? false;
     } catch (_) {
       return false;
     }
@@ -38,5 +33,3 @@ class BatteryService {
     return prefs.getBool(_key) ?? false;
   }
 }
-
-// 需要 import 'package:flutter/services.dart';

@@ -1,11 +1,9 @@
-name: Build GLaDOS APK
+name: Build APK
 
 on:
   push:
     branches: [ main, master ]
-    paths:
-      - 'app/**'
-      - '.github/workflows/build-app.yml'
+    paths: [ 'app/**', '.github/workflows/build-app.yml' ]
   workflow_dispatch:
 
 jobs:
@@ -13,50 +11,67 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
+        with: { distribution: 'zulu', java-version: '17' }
       - uses: subosito/flutter-action@v2
-        with:
-          flutter-version: '3.29.2'
-          channel: 'stable'
+        with: { flutter-version: '3.29.2', channel: 'stable' }
 
-      - name: Create Flutter project scaffold
+      - name: Create Flutter project
         run: |
           cd app
-          flutter create --project-name glados_checkin --org com.glados .
-          rm -rf lib test
-          rm -f pubspec.yaml
+          flutter create --project-name portal_guard --org com.portalguard .
+          rm -rf lib test pubspec.yaml
 
-      - name: Restore source files
+      - name: Copy source files
         run: |
-          git checkout HEAD -- app/lib app/pubspec.yaml app/assets
+          cp -r app/lib app/pubspec.yaml app/assets app/android/
 
-      - name: Patch AndroidManifest
+      - name: Patch manifest and add battery channel
         run: |
-          MANIFEST="app/android/app/src/main/AndroidManifest.xml"
-          # INTERNET permission
-          if ! grep -q 'android.permission.INTERNET' "$MANIFEST"; then
-            sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"/>\n    <application|' "$MANIFEST"
-          fi
+          M="app/android/app/src/main/AndroidManifest.xml"
+          sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"/>\n    <application|' "$M"
+          
+          # Create MainActivity with battery channel
+          mkdir -p "app/android/app/src/main/kotlin/com/portalguard"
+          cat > "app/android/app/src/main/kotlin/com/portalguard/MainActivity.kt" << 'EOF'
+          package com.portalguard
+          import io.flutter.embedding.android.FlutterActivity
+          import io.flutter.embedding.engine.FlutterEngine
+          import io.flutter.plugin.common.MethodChannel
+          import android.content.Intent
+          import android.net.Uri
+          import android.os.PowerManager
+          import android.provider.Settings
+          import android.content.Context
 
-      - name: Install dependencies
+          class MainActivity: FlutterActivity() {
+            private val CH = "glados/battery"
+            override fun configureFlutterEngine(e: FlutterEngine) {
+              super.configureFlutterEngine(e)
+              MethodChannel(e.dartExecutor.binaryMessenger, CH).setMethodCallHandler { call, res ->
+                when (call.method) {
+                  "requestIgnoreBatteryOpt" -> {
+                    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                    if (!pm.isIgnoringBatteryOptimizations(packageName))
+                      startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName")))
+                    res.success("done")
+                  }
+                  "isIgnoringBatteryOpt" -> {
+                    val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+                    res.success(pm.isIgnoringBatteryOptimizations(packageName))
+                  }
+                  else -> res.notImplemented()
+                }
+              }
+            }
+          }
+          EOF
+
+      - name: Build
         working-directory: app
-        run: flutter pub get
+        run: flutter pub get && flutter pub run flutter_launcher_icons || true && flutter build apk --release
 
-      - name: Generate icons
-        working-directory: app
-        run: flutter pub run flutter_launcher_icons || true
-
-      - name: Build APK
-        working-directory: app
-        run: flutter build apk --release
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: portal-guard-apk
           path: app/build/app/outputs/flutter-apk/app-release.apk

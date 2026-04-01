@@ -1,5 +1,5 @@
-name: glados_checkin
-description: GLaDOS Auto Check-in
+name: portal_guard
+description: Portal Guard - GLaDOS 签到助手
 publish_to: 'none'
 version: 1.0.0+1
 
@@ -23,7 +23,7 @@ flutter_launcher_icons:
   android: true
   ios: false
   image_path: "assets/icon/app_icon.png"
-  adaptive_icon_background: "#1A1A2E"
+  adaptive_icon_background: "#0F0F1E"
   min_sdk_android: 21
 
 flutter:
