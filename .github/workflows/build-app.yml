@@ -22,10 +22,36 @@ jobs:
           flutter create --project-name portal_guard --org com.portalguard .
           git checkout HEAD -- lib pubspec.yaml assets
 
-      - name: Patch manifest and add battery channel
+      - name: Patch Android manifest
         run: |
           M="app/android/app/src/main/AndroidManifest.xml"
           sed -i 's|<application|<uses-permission android:name="android.permission.INTERNET"/>\n    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>\n    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>\n    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>\n    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>\n    <uses-permission android:name="android.permission.WAKE_LOCK"/>\n    <application|' "$M"
+
+      - name: Patch build.gradle.kts (ndk + desugaring)
+        run: |
+          python3 -c "
+          def patch(path):
+              lines = open(path).readlines()
+              out = []
+              for line in lines:
+                  s = line.strip()
+                  if s == 'android {':
+                      i = line[:len(line)-len(line.lstrip())]
+                      out.append(line); out.append(f'{i}    ndkVersion = \"27.0.12077973\"\n')
+                  elif s == 'compileOptions {':
+                      i = line[:len(line)-len(line.lstrip())]
+                      out.append(line); out.append(f'{i}    isCoreLibraryDesugaringEnabled = true\n')
+                  elif s == 'dependencies {':
+                      i = line[:len(line)-len(line.lstrip())]
+                      out.append(line); out.append(f'{i}    coreLibraryDesugaring(\"com.android.tools:desugar_jdk_libs:2.1.4\")\n')
+                  else:
+                      out.append(line)
+              open(path,'w').writelines(out)
+          patch('app/android/app/build.gradle.kts')
+          "
+
+      - name: Create MainActivity with battery channel
+        run: |
           mkdir -p "app/android/app/src/main/kotlin/com/portalguard"
           cat > "app/android/app/src/main/kotlin/com/portalguard/MainActivity.kt" << 'EOF'
           package com.portalguard
