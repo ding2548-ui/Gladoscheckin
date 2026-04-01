@@ -168,6 +168,20 @@ class _SettingsPageState extends State<SettingsPage> {
     } catch (_) {}
   }
 
+  Future<void> _requestNotificationPermission() async {
+    try {
+      const ch = MethodChannel('glados/battery');
+      final granted = await ch.invokeMethod('requestNotificationPermission') ?? false;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(granted ? '通知权限已开启 ✅' : '请在系统设置中手动开启通知')),
+        );
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('请求失败: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -251,6 +265,15 @@ class _SettingsPageState extends State<SettingsPage> {
                 const SizedBox(height: 8),
                 const Text('防止系统杀后台导致定时签到失效', style: TextStyle(fontSize: 13, color: Colors.grey)),
                 const SizedBox(height: 16),
+                // 通知权限
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.notifications, color: Colors.blue),
+                  title: const Text('通知权限'),
+                  subtitle: const Text('签到结果需要通知提醒'),
+                  trailing: FilledButton.tonal(onPressed: _requestNotificationPermission, child: const Text('去开启')),
+                ),
+                const Divider(),
                 // 电池优化
                 ListTile(
                   contentPadding: EdgeInsets.zero,

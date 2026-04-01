@@ -1,7 +1,7 @@
 name: sign_helper
 description: 签到助手 - GLaDOS 自动签到
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.20+20
 
 environment:
   sdk: '>=3.0.0 <4.0.0'

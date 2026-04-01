@@ -40,10 +40,37 @@ jobs:
           name: sign-helper-apk
           path: app/build/app/outputs/flutter-apk/app-release.apk
 
+      - name: Get version
+        id: version
+        working-directory: app
+        run: |
+          VER=$(grep '^version:' pubspec.yaml | sed 's/version: //')
+          echo "version=$VER" >> $GITHUB_OUTPUT
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ github.run_number }}
           name: 签到助手 v${{ github.run_number }}
           files: app/build/app/outputs/flutter-apk/app-release.apk
-          body: "签到助手 - GLaDOS 自动签到 (arm64)"
+          body: |
+            ## 签到助手 v${{ github.run_number }}
+
+            ### 📦 安装
+            - 下载 `app-release.apk` 安装（arm64-v8a）
+            - 如覆盖安装失败请先卸载旧版本
+
+            ### ✨ 功能
+            - GLaDOS 自动签到（手动/定时）
+            - 签到结果微信推送（PushPlus）
+            - API 返回消息汉化
+            - 系统通知提醒签到结果
+
+            ### 🔧 保后台设置
+            - 忽略电池优化
+            - 通知权限管理
+            - 自启动/锁定后台引导
+
+            ### 🛡️ 隐私
+            - PushPlus Token 脱敏显示（仅显示后4位）
+            - 所有数据本地存储，不上传第三方

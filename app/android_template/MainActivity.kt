@@ -5,6 +5,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.PowerManager
 import android.provider.Settings
 import android.content.Context
@@ -35,6 +36,19 @@ class MainActivity: FlutterActivity() {
                         startActivity(intent)
                         res.success("opened")
                     } catch (e: Exception) { res.error("ERR", e.message, null) }
+                }
+                "requestNotificationPermission" -> {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        try {
+                            val intent = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS)
+                                .putExtra(Settings.EXTRA_APP_PACKAGE, packageName)
+                            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            startActivity(intent)
+                            res.success(true)
+                        } catch (e: Exception) { res.error("ERR", e.message, null) }
+                    } else {
+                        res.success(true)
+                    }
                 }
                 else -> res.notImplemented()
             }
