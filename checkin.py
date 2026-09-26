@@ -1,11 +1,11 @@
 import requests
 import json
 import os
+import html
 import logging
 from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
 from dataclasses import dataclass, asdict
-from pypushdeer import PushDeer
 from logging_config import init_logger
 
 
@@ -94,6 +94,7 @@ def log_method(func):
 class Config:
     """应用配置"""
 
+    # 环境变量名保持为 PUSHDEER_SENDKEY, 但其值现在用于存放 pushplus 的 token
     ENV_PUSH_KEY = "PUSHDEER_SENDKEY"
     ENV_COOKIES = "GLADOS_COOKIES"
     ENV_EXCHANGE_PLAN = "GLADOS_EXCHANGE_PLAN"
@@ -391,10 +392,25 @@ class CheckinResult:
 
 
 class PushService:
-    """推送服务"""
+    """推送服务 (pushplus)"""
+
+    """pushplus 发送接口, 支持 GET/POST, 此处使用 POST + JSON"""
+    SEND_URL = "http://www.pushplus.plus/send"
+
+    """发送模板: html / txt / json / markdown 等, 默认 html"""
+    TEMPLATE = "html"
+
+    """发送渠道: wechat / app / webhook / cp / mail 等, 默认 wechat"""
+    CHANNEL = "wechat"
 
     def __init__(self, config: Config):
         self.config = config
+
+    @staticmethod
+    def _format_content(content: str) -> str:
+        """将纯文本内容转为 pushplus html 模板可正常换行的内容"""
+        escaped = html.escape(content or "", quote=False)
+        return escaped.replace("\r\n", "\n").replace("\n", "<br/>")
 
     def send(self, title: str, content: str) -> bool:
         """发送推送"""
@@ -402,11 +418,31 @@ class PushService:
             logger.info(f"{LogEmoji.WARNING} 未设置推送密钥，跳过推送通知。")
             return False
 
+        payload = {
+            "token": self.config.push_key,
+            "title": title,
+            "content": self._format_content(content) or title,
+            "template": self.TEMPLATE,
+            "channel": self.CHANNEL,
+        }
+
         try:
-            pushdeer = PushDeer(pushkey=self.config.push_key)
-            pushdeer.send_text(title, desp=content)
-            logger.info(f"{LogEmoji.SUCCESS} 推送通知发送成功。")
-            return True
+            response = requests.post(self.SEND_URL, json=payload, timeout=(60, 120))
+
+            if not response.ok:
+                logger.error(f"{LogEmoji.ERROR} 发送推送通知失败: 状态码 {response.status_code}, 响应内容: {response.text}")
+                return False
+
+            data = response.json()
+            code = data.get("code", -2)
+
+            # code == 200 仅代表服务端已收到请求, 最终发送结果可用 data 中的流水号查询
+            if code == 200:
+                logger.info(f"{LogEmoji.SUCCESS} 推送通知发送成功, 流水号: {data.get('data', '')}")
+                return True
+
+            logger.error(f"{LogEmoji.ERROR} 发送推送通知失败: {{ code : {code}, msg : {data.get('msg', '无消息字段')} }}")
+            return False
         except Exception as e:
             logger.error(f"{LogEmoji.ERROR} 发送推送通知失败: {e}")
             return False
