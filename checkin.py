@@ -100,8 +100,8 @@ class Config:
     ENV_EXCHANGE_PLAN = "GLADOS_EXCHANGE_PLAN"
     ENV_VERBOSE = "GLADOS_VERBOSE"
 
-    """默认兑换计划"""
-    DEFAULT_EXCHANGE_PLAN = "plan500"
+    """默认兑换计划: None 表示不自动兑换, 仅当显式配置 GLADOS_EXCHANGE_PLAN 时才执行"""
+    DEFAULT_EXCHANGE_PLAN: Optional[str] = None
 
     """默认是否输出详细响应"""
     DEFAULT_VERBOSE = False
@@ -145,19 +145,22 @@ class Config:
                 raise ValueError(f"环境变量 '{self.ENV_COOKIES}' 已设置，但未包含任何有效的 Cookie。")
 
         if not exchange_plan_env:
-            logger.warning(f"{LogEmoji.WARNING} 环境变量 '{self.ENV_EXCHANGE_PLAN}' 未设置，将使用默认兑换计划 {self.DEFAULT_EXCHANGE_PLAN}。")
+            logger.info(f"{LogEmoji.INFO} 环境变量 '{self.ENV_EXCHANGE_PLAN}' 未设置, 不执行自动积分兑换。")
             self.exchange_plan = self.DEFAULT_EXCHANGE_PLAN
         else:
             if exchange_plan_env in self.EXCHANGE_PLANS:
                 self.exchange_plan = exchange_plan_env
                 logger.info(f"{LogEmoji.SUCCESS} 使用指定的兑换计划: {self.exchange_plan}")
             else:
-                logger.warning(f"{LogEmoji.WARNING} 环境变量 '{self.ENV_EXCHANGE_PLAN}' 的值 '{exchange_plan_env}' 无效，将使用默认兑换计划 {self.DEFAULT_EXCHANGE_PLAN}。")
+                logger.warning(f"{LogEmoji.WARNING} 环境变量 '{self.ENV_EXCHANGE_PLAN}' 的值 '{exchange_plan_env}' 无效, 不执行自动积分兑换。")
                 self.exchange_plan = self.DEFAULT_EXCHANGE_PLAN
 
         logger.info(f"{LogEmoji.INFO} 共加载了 {len(self.cookies_list)} 个 Cookie 用于签到。")
         logger.info(f"{LogEmoji.INFO} 当前 {self.ENV_PUSH_KEY} {'已设置' if push_key_env else '未设置'}。")
-        logger.info(f"{LogEmoji.INFO} 当前 {self.ENV_EXCHANGE_PLAN}: {self.exchange_plan}。")
+        if self.exchange_plan:
+            logger.info(f"{LogEmoji.INFO} 当前 {self.ENV_EXCHANGE_PLAN}: {self.exchange_plan}。")
+        else:
+            logger.info(f"{LogEmoji.INFO} 当前 {self.ENV_EXCHANGE_PLAN}: 未配置 (不自动兑换)。")
 
         if verbose_env is not None:
             verbose_env_lower = verbose_env.lower()
@@ -508,15 +511,18 @@ class Checker:
             points_str, points_num = api.get_points(cookie)
             result.points_total = points_str
 
-            # 4. 执行兑换
-            required_points = self.config.EXCHANGE_PLANS.get(self.config.exchange_plan, 500)
-            self._log(
-                cookie_idx,
-                domain,
-                LogEmoji.EXCHANGE,
-                f"开始兑换 {self.config.exchange_plan} (需要 {required_points} 积分)",
-            )
-            result.exchange = api.exchange(cookie, self.config.exchange_plan, required_points)
+            # 4. 执行兑换 (仅在显式配置了兑换计划时才执行, 默认不自动兑换)
+            if self.config.exchange_plan:
+                required_points = self.config.EXCHANGE_PLANS.get(self.config.exchange_plan, 500)
+                self._log(
+                    cookie_idx,
+                    domain,
+                    LogEmoji.EXCHANGE,
+                    f"开始兑换 {self.config.exchange_plan} (需要 {required_points} 积分)",
+                )
+                result.exchange = api.exchange(cookie, self.config.exchange_plan, required_points)
+            else:
+                self._log(cookie_idx, domain, LogEmoji.INFO, "未配置兑换计划, 跳过积分兑换。", force=True)
 
         return result
 
